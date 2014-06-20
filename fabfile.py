@@ -19,22 +19,63 @@ def deploy():
     instances = conn.get_only_instances()
     running_instances = [i for i in instances if i.state == 'running']
     for instance in running_instances:
+        print("Deployment Started for Instance {}:".format(instance.id))
+        #Remove existing project files
+        run_command_on_server(_remove_existing_project_files, instance)
+
+        #Upload new project files
+        run_command_on_server(_upload_project_files, instance)
+
+        #Install, configure, and start nginx
+        run_command_on_server(_install_nginx, instance)
+
+        #Install, configure, and start supervisor
+        run_command_on_server(_setup_supervisor, instance)
+
+        #Restart nginx
+        run_command_on_server(_restart_nginx, instance)
+        print("Deployment Complete for Instance {}.".format(instance.id))
+
+
+def _upload_project_files():
+        print("Uploading Project files from {}".format(os.getcwd()))
+        upload_project(remote_dir='./', use_sudo=True)
+        print("Upload complete")
+
+
+def _remove_existing_project_files():
         print("Removing existing project files...")
         sudo('rm -rf ./*')
-        print("Uploading Project files from {} to instance {}".format(os.getcwd(), instance.id))
-        upload_project(remote_dir='./', use_sudo=True)
-        print("Upload complete.")
-        print("Installing nginx...")
-        install_nginx(instance)
-        #move config to its proper place on the server
-        print("Moving config on server...")
-        sudo('mv /etc/nginx/sites-available/default /etc/nginx/sites-available/default.orig')
-        sudo('mv ./bookapp/simple_nginx_config /etc/nginx/sites-available/default')
-        print("Config moved.")
-        print("Restarting Nginx...")
-        sudo('/etc/init.d/nginx restart')
-        print("Nginx Restarted.")
-        print("Deployment Complete.")
+        print("Old files removed.")
+
+
+def _setup_supervisor():
+    print("Setup and run supervisor...")
+    sudo('apt-get install supervisor')
+    sudo('mv ./bookapp/supervisord.conf /etc/supervisor/supervisord.conf')
+    sudo('/etc/init.d/supervisor start')
+    print("Supervisor running")
+
+
+def setup_nginx(instance=None):
+    print("Setting up nginx...")
+    run_command_on_server(_install_nginx, instance)
+    print("nginx installed and started.")
+
+
+def _install_nginx():
+    print("Setting up nginx...")
+    sudo('apt-get install nginx')
+    sudo('mv /etc/nginx/sites-available/default /etc/nginx/sites-available/default.orig')
+    sudo('mv ./bookapp/simple_nginx_config /etc/nginx/sites-available/default')
+    sudo('/etc/init.d/nginx start')
+    print("nginx installed and started.")
+
+
+def _restart_nginx():
+    print("Restarting Nginx...")
+    sudo('/etc/init.d/nginx restart')
+    print("Nginx Restarted.")
 
 
 def get_ec2_connection():
@@ -133,16 +174,7 @@ def select_instance(state='running'):
     env['active_instance'] = env.instances[choice - 1]['instance']
 
 
-def install_nginx(instance=None):
-    run_command_on_selected_server(_install_nginx, instance)
-
-
-def _install_nginx():
-    sudo('apt-get install nginx')
-    sudo('/etc/init.d/nginx start')
-
-
-def run_command_on_selected_server(command, instance=None):
+def run_command_on_server(command, instance=None):
     if instance is None:
         select_instance(state='running')
         instance = env.active_instance
