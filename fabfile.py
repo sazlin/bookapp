@@ -15,9 +15,9 @@ env.aws_region = 'us-west-2'
 
 
 def deploy():
-    conn = get_ec2_connection()
-    instances = conn.get_only_instances()
-    running_instances = [i for i in instances if i.state == 'running']
+    conn = _get_ec2_connection()
+    all_instances = conn.get_only_instances()
+    running_instances = [i for i in all_instances if i.state == 'running']
     for instance in running_instances:
         print("Deployment Started for Instance {}:".format(instance.id))
         #Remove existing project files
@@ -51,6 +51,11 @@ def _remove_existing_project_files():
 
 def _setup_supervisor():
     print("Setup and run supervisor...")
+    sudo('supervisorctl -c /etc/supervisor/supervisord.conf stop all')
+    # ret code 1 comes back if no process to kill, which is fine
+    env.ok_ret_codes = [0,1]
+    sudo('killall -w supervisord')
+    env.ok_ret_codes = [0]
     sudo('apt-get install supervisor')
     sudo('mv ./bookapp/supervisord.conf /etc/supervisor/supervisord.conf')
     sudo('/etc/init.d/supervisor start')
@@ -78,7 +83,7 @@ def _restart_nginx():
     print("Nginx Restarted.")
 
 
-def get_ec2_connection():
+def _get_ec2_connection():
     if 'ec2' not in env:
         conn = boto.ec2.connect_to_region(env.aws_region)
         if conn is not None:
@@ -93,7 +98,7 @@ def get_ec2_connection():
 def provision_instance(wait_for_running=False, timeout=60, interval='2'):
     wait_val = int(interval)
     timeout_val = int(timeout)
-    conn = get_ec2_connection()
+    conn = _get_ec2_connection()
     instance_type = 't1.micro'
     key_name = 'kp1'
     security_group = 'ssh-access'
@@ -123,12 +128,12 @@ def provision_instance(wait_for_running=False, timeout=60, interval='2'):
 
 
 def list_reservations():
-    get_ec2_connection()
+    _get_ec2_connection()
     print(env.ec2.get_all_reservations())
 
 
 def list_aws_instances(verbose=False, state=''):
-    conn = get_ec2_connection()
+    conn = _get_ec2_connection()
 
     reservations = conn.get_all_reservations()
     instances = []
